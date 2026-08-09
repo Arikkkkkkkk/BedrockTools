@@ -17,8 +17,18 @@ inline constexpr std::size_t mSelectionOverlayMaterial = 0x1030;
 }
 
 namespace ScreenContext {
+inline constexpr std::size_t mActorShaderConstants = 0x20;
 inline constexpr std::size_t mColorHolder = 0x30;
 inline constexpr std::size_t mTessellator = 0xB8;
+}
+
+namespace ActorShaderConstants {
+inline constexpr std::size_t mGlintColor = 0xF8;
+}
+
+namespace ShaderConstant {
+inline constexpr std::size_t mDirty = 0x29;
+inline constexpr std::size_t mData = 0x30;
 }
 
 namespace MaterialGroup {

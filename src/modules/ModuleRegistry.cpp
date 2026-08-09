@@ -3,6 +3,7 @@
 #include "visual/motionblur.hpp"
 #include "visual/fpsunlocker.hpp"
 #include "visual/fogcolor.hpp"
+#include "visual/glintcolor.hpp"
 #include "visual/nofog.hpp"
 #include "hud/pingcounter.hpp"
 #include "hud/reachcounter.hpp"
@@ -77,6 +78,7 @@ void registerAllModules() {
     registry.emplace<FullbrightModule>();
     registry.emplace<MotionBlurModule>();
     registry.emplace<FogColorModule>();
+    registry.emplace<GlintColorModule>();
     registry.emplace<NoFogModule>();
     registry.emplace<PingCounterModule>();
     registry.emplace<ReachCounterModule>();
