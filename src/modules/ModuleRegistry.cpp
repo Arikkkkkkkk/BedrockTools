@@ -15,6 +15,7 @@
 #include "player/weatherchanger.hpp"
 #include "player/nick.hpp"
 #include "misc/nodisconnect.hpp"
+#include "misc/chattimestamps.hpp"
 #include "misc/notouchborder.hpp"
 #include "misc/cpslimiter.hpp"
 #include "hud/speeddisplay.hpp"
@@ -92,6 +93,7 @@ void registerAllModules() {
     registry.emplace<WeatherChangerModule>();
     registry.emplace<NickModule>();
     registry.emplace<NoDisconnectModule>();
+    registry.emplace<ChatTimestampsModule>();
     registry.emplace<NoTouchBorderModule>();
     registry.emplace<CpsLimiterModule>();
     registry.emplace<SpeedDisplayModule>();

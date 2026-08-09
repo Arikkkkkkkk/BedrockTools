@@ -95,6 +95,18 @@ enum class SignatureId : std::uint16_t {
     TextureUVCoordinateSetCopyCtor,
     TextureUVCoordinateSetDtor,
     RenderChunkCoordinatorSetAllDirty,
+    GuiDataDisplayAnnouncementMessage,
+    GuiDataDisplayChatMessage,
+    GuiDataDisplayClientMessage,
+    GuiDataDisplayDevConsoleMessage,
+    GuiDataDisplayLocalizableMessage,
+    GuiDataDisplayLocalizedMessage,
+    GuiDataDisplaySystemMessage,
+    GuiDataDisplayTextObjectMessage,
+    GuiDataDisplayTextObjectWhisperMessageText,
+    GuiDataDisplayTextObjectWhisperMessageObject,
+    GuiDataDisplayWhisperMessage,
+    GuiDataAddMessage,
     Count
 };
 

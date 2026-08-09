@@ -96,6 +96,18 @@ const std::array<SignatureDefinition, SignatureCount> definitions{{
     SignatureDefinition{SignatureId::TextureUVCoordinateSetCopyCtor, "FD 7B BE A9 F4 4F 01 A9 FD 03 00 91 20 C0 C0 3C 21 00 C0 3D F4 03 01 AA F3 03 00 AA 00 C0 80 3C"},
     SignatureDefinition{SignatureId::TextureUVCoordinateSetDtor, "08 A0 40 39 48 00 00 37 C0 03 5F D6 00 1C 40 F9 69 B4 E5 15"},
     SignatureDefinition{SignatureId::RenderChunkCoordinatorSetAllDirty, "FF 03 02 D1 FD 7B 02 A9 FC 6F 03 A9 FA 67 04 A9 F8 5F 05 A9 F6 57 06 A9 F4 4F 07 A9 FD 83 00 91 48 D0 3B D5 F4 03 02 2A"},
+    SignatureDefinition{SignatureId::GuiDataDisplayAnnouncementMessage, "FF 43 07 D1 FD 7B 18 A9 FC CB 00 F9 F8 5F 1A A9 F6 57 1B A9 F4 4F 1C A9 FD 03 06 91 58 D0 3B D5 F3 03 00 AA F4 03 04 AA 08 17 40 F9 F5 03 03 AA F6 03 02 AA F7 03 01 AA A8 83 1F F8 00 50 40 F9"},
+    SignatureDefinition{SignatureId::GuiDataDisplayChatMessage, "FF 43 07 D1 FD 7B 18 A9 FC 67 19 A9 F8 5F 1A A9 F6 57 1B A9 F4 4F 1C A9 FD 03 06 91 59 D0 3B D5 F3 03 00 AA F4 03 05 AA 28 17 40 F9 F5 03 04 AA F6 03 03 AA F7 03 02 AA F8 03 01 AA A8 83 1F F8"},
+    SignatureDefinition{SignatureId::GuiDataDisplayClientMessage, "FD 7B BB A9 FC 0B 00 F9 F8 5F 02 A9 F6 57 03 A9 F4 4F 04 A9 FD 03 00 91 FF 03 07 D1 58 D0 3B D5 ? ? ? ? F7 96 02 91 08 17 40 F9 F5 03 02 AA F6 03 01 AA F3 03 00 AA E0 03 01 91 E1 03 17 AA"},
+    SignatureDefinition{SignatureId::GuiDataDisplayDevConsoleMessage, "FD 7B BD A9 F6 57 01 A9 F4 4F 02 A9 FD 03 00 91 15 20 59 A9 F3 03 00 AA F4 03 01 AA BF 02 08 EB ? ? ? ? 88 02 40 39 ? ? ? ? 88 0A 40 F9 80 02 C0 3D A8 0A 00 F9 A0 02 80 3D ? ? ? ?"},
+    SignatureDefinition{SignatureId::GuiDataDisplayLocalizableMessage, "E8 0F 1B FC FD 7B 01 A9 FC 5F 02 A9 F6 57 03 A9 F4 4F 04 A9 FD 43 00 91 FF 83 08 D1 57 D0 3B D5 F4 03 03 AA F5 03 01 AA E8 16 40 F9 F3 03 00 AA A8 83 1E F8 48 60 40 39 BF 03 1C 38 BF 83 1D 38"},
+    SignatureDefinition{SignatureId::GuiDataDisplayLocalizedMessage, "E8 0F 1B FC FD 7B 01 A9 FC 5F 02 A9 F6 57 03 A9 F4 4F 04 A9 FD 43 00 91 FF 03 07 D1 56 D0 3B D5 F4 03 02 AA F5 03 01 AA C8 16 40 F9 F3 03 00 AA ? ? ? ? 21 94 02 91 E0 03 01 91 E2 03 1F AA"},
+    SignatureDefinition{SignatureId::GuiDataDisplaySystemMessage, "E8 0F 1A FC FD FB 00 A9 FC 0F 00 F9 FA 67 02 A9 F8 5F 03 A9 F6 57 04 A9 F4 4F 05 A9 FD 23 00 91 FF 03 07 D1 58 D0 3B D5 F6 03 02 AA F7 03 01 AA 08 17 40 F9 F4 03 00 AA ? ? ? ? 21 94 02 91"},
+    SignatureDefinition{SignatureId::GuiDataDisplayTextObjectMessage, "FD 7B BC A9 FC 5F 01 A9 F6 57 02 A9 F4 4F 03 A9 FD 03 00 91 FF 43 07 D1 57 D0 3B D5 F4 03 02 AA F6 03 01 AA E8 16 40 F9 F3 03 00 AA ? ? ? ? 21 94 02 91 E0 C3 00 91 E2 03 1F AA F5 03 03 AA"},
+    SignatureDefinition{SignatureId::GuiDataDisplayTextObjectWhisperMessageText, "FF C3 07 D1 FD 7B 1B A9 FC 5F 1C A9 F6 57 1D A9 F4 4F 1E A9 FD C3 06 91 57 D0 3B D5 F4 03 02 AA F5 03 01 AA E8 16 40 F9 F3 03 00 AA ? ? ? ? 21 94 02 91 E0 43 00 91 E2 03 1F AA F6 03 03 AA"},
+    SignatureDefinition{SignatureId::GuiDataDisplayTextObjectWhisperMessageObject, "FF 43 01 D1 FD 7B 02 A9 F6 57 03 A9 F4 4F 04 A9 FD 83 00 91 56 D0 3B D5 F5 03 00 AA E0 03 01 AA C8 16 40 F9 F3 03 03 AA F4 03 02 AA A8 83 1F F8 28 00 40 F9 09 09 40 F9 E8 03 00 91 20 01 3F D6"},
+    SignatureDefinition{SignatureId::GuiDataDisplayWhisperMessage, "FD 7B BA A9 FC 0B 00 F9 FA 67 02 A9 F8 5F 03 A9 F6 57 04 A9 F4 4F 05 A9 FD 03 00 91 FF C3 09 D1 5A D0 3B D5 F5 03 05 AA F4 03 04 AA 48 17 40 F9 F7 03 02 AA F6 03 01 AA F3 03 00 AA A8 83 1F F8"},
+    SignatureDefinition{SignatureId::GuiDataAddMessage, "FD 7B BC A9 F8 5F 01 A9 F6 57 02 A9 F4 4F 03 A9 FD 03 00 91 08 24 54 A9 F4 03 02 2A F3 03 00 AA 1F 01 09 EB ? ? ? ? 29 00 40 B9 09 01 00 B9 29 0C 40 F9 20 80 C0 3C 09 0D 00 F9 E9 03 08 AA"},
 }};
 }
 
