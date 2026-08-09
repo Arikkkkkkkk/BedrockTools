@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
 
 namespace bedrocktools::sdk::offsets {
 
@@ -11,6 +12,7 @@ inline constexpr std::size_t mSkin = 2552;
 
 namespace Actor {
 inline constexpr std::size_t mEntityContext = 0x8;
+inline constexpr std::size_t mEntityData = 0x120;
 inline constexpr std::size_t mStateVectorComponent = 0x208;
 inline constexpr std::size_t mActorRotationComponent = 0x218;
 inline constexpr std::size_t mLevel = 464;
@@ -19,6 +21,23 @@ inline constexpr std::size_t mHurtTime = 0x194;
 inline constexpr std::size_t mCategories = 512;
 inline constexpr std::size_t mNameTagHash = 384;
 inline constexpr std::size_t mFilteredNameTag = 712;
+}
+
+namespace ActorDataIds {
+inline constexpr std::size_t FuseTime = 55;
+inline constexpr std::size_t NametagAlwaysShow = 81;
+}
+
+namespace ActorFlags {
+inline constexpr int CanShowName = 14;
+inline constexpr int AlwaysShowName = 15;
+}
+
+namespace DataItem {
+inline constexpr std::size_t mType = 0x8;
+inline constexpr std::size_t mId = 0xA;
+inline constexpr std::size_t mValue = 0xC;
+inline constexpr std::uint8_t IntType = 2;
 }
 
 namespace BuiltInActorComponents {
