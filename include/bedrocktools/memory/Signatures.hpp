@@ -109,6 +109,9 @@ enum class SignatureId : std::uint16_t {
     GuiDataAddMessage,
     ResourcePacksInfoPacketHandle,
     ResourcePackStackPacketHandle,
+    BlockTessellatorTessellateDoubleThinFenceInWorld,
+    BlockGraphicsGetTexture,
+    BlockOccluderUpdateRenderFace,
     Count
 };
 

@@ -13,7 +13,7 @@ inline constexpr std::size_t mBaseFogStart = 0x434;
 inline constexpr std::size_t mBaseFogEnd = 0x438;
 inline constexpr std::size_t mCurrentFogDensityMax = 0x464;
 inline constexpr std::size_t mCamPos = 0x61C;
-inline constexpr std::size_t mSelectionOverlayMaterial = 0x1048;
+inline constexpr std::size_t mSelectionOverlayMaterial = 0x1030;
 }
 
 namespace ScreenContext {
@@ -61,6 +61,11 @@ inline constexpr std::size_t mXFlipTexture = 0x74;
 inline constexpr std::size_t mFlipFace = 0x174;
 inline constexpr std::size_t mTextureOverride = 0x17C;
 inline constexpr std::size_t mCurrentShapeBB = 0x5F0;
+}
+
+namespace Tessellator {
+inline constexpr std::size_t mTextureU = 0x17C;
+inline constexpr std::size_t mTextureV = 0x180;
 }
 
 namespace Block {
