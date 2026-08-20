@@ -64,7 +64,7 @@ private:
     void queueNativeClick(bool left);
     void queueNativeSwing(std::uint8_t source);
     void queueNativeExplicitLeft();
-    void queueNativeRight();
+    void queueNativeRight(std::uint16_t swingSourceMask);
     void resolveNativeInputTick();
     void flushNativeClickBatch(bool force);
     void commitNativeClickBatchLocked();
@@ -86,11 +86,14 @@ private:
     bool m_nativeBatchRight = false;
     std::int64_t m_nativeBatchLastNs = 0;
     struct PendingNativeSwing {
+        std::uint8_t source = 0;
         std::uint8_t ticksRemaining = 0;
     };
     std::deque<PendingNativeSwing> m_pendingNativeSwings;
     std::uint32_t m_nativeSwingSuppressCount = 0;
     std::uint8_t m_nativeSwingSuppressTicks = 0;
+    std::uint16_t m_nativeRmbSwingSuppressMask = 0;
+    std::uint8_t m_nativeRmbSwingSuppressTicks = 0;
     bool m_nativeExplicitLeftThisTick = false;
     bool m_nativeRightThisTick = false;
     std::mutex m_mouseMutex;

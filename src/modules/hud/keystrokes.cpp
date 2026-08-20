@@ -31,6 +31,14 @@ static void keystrokesHSVtoRGB(float h, float s, float v, float& out_r, float& o
 }
 
 static KeystrokesModule* g_keystrokesMod = nullptr;
+
+static constexpr std::uint16_t swingSourceBit(std::uint8_t source) {
+    return source < 16 ? static_cast<std::uint16_t>(1u << source) : 0;
+}
+
+static constexpr std::uint16_t buildSwingMask = static_cast<std::uint16_t>((1u << 1) | (1u << 3) | (1u << 5));
+static constexpr std::uint16_t interactSwingMask = static_cast<std::uint16_t>(1u << 3);
+static constexpr std::uint16_t useItemSwingMask = static_cast<std::uint16_t>(1u << 5);
 KeystrokesModule::PlayerSwingFn KeystrokesModule::s_playerSwingOriginal = nullptr;
 
 static std::int64_t keystrokesNowNs() {
@@ -39,10 +47,15 @@ static std::int64_t keystrokesNowNs() {
 
 bool KeystrokesModule::playerSwingDetour(void* player, std::uint8_t source) {
     const bool result = s_playerSwingOriginal ? s_playerSwingOriginal(player, source) : false;
-    if (g_keystrokesMod && g_keystrokesMod->enabled) {
+    if (result && g_keystrokesMod && g_keystrokesMod->enabled) {
+        constexpr std::uint8_t buildSource = 1;
         constexpr std::uint8_t mineSource = 2;
-        const bool miningSwing = source == mineSource && g_keystrokesMod->m_destroyActive.load(std::memory_order_relaxed);
-        if (!miningSwing) g_keystrokesMod->queueNativeSwing(source);
+        if (source == buildSource) {
+            g_keystrokesMod->queueNativeRight(buildSwingMask);
+        } else {
+            const bool miningSwing = source == mineSource && g_keystrokesMod->m_destroyActive.load(std::memory_order_relaxed);
+            if (!miningSwing) g_keystrokesMod->queueNativeSwing(source);
+        }
     }
     return result;
 }
@@ -91,11 +104,12 @@ void KeystrokesModule::onInit() {
                 queueNativeExplicitLeft();
                 break;
             case bedrocktools::events::GameModeAction::Interact:
+                queueNativeRight(interactSwingMask);
+                break;
             case bedrocktools::events::GameModeAction::UseItemOn:
-                queueNativeRight();
                 break;
             case bedrocktools::events::GameModeAction::UseItem:
-                if (event.hasNativeResult && event.nativeResult) queueNativeRight();
+                if (event.hasNativeResult && event.nativeResult) queueNativeRight(useItemSwingMask);
                 break;
             case bedrocktools::events::GameModeAction::StartBuildBlock:
             case bedrocktools::events::GameModeAction::UseItemAsAttack:
@@ -197,20 +211,16 @@ void KeystrokesModule::queueNativeSwing(std::uint8_t source) {
     if (!m_mouseActive.load(std::memory_order_acquire) || !m_showMouseCps.load(std::memory_order_relaxed)) return;
     std::lock_guard<std::mutex> lock(m_mouseMutex);
     const bool ambiguous = source == 1 || source == 3 || source == 5;
-    if (m_nativeRightThisTick) {
-        if (ambiguous && m_nativeSwingSuppressCount > 0) {
-            --m_nativeSwingSuppressCount;
-            if (m_nativeSwingSuppressCount == 0) m_nativeSwingSuppressTicks = 0;
-        }
-        return;
-    }
+    const auto sourceBit = swingSourceBit(source);
+    if (sourceBit != 0 && (m_nativeRmbSwingSuppressMask & sourceBit) != 0) return;
+    if (m_nativeRightThisTick && ambiguous) return;
     if (m_nativeExplicitLeftThisTick) return;
     if (ambiguous && m_nativeSwingSuppressCount > 0) {
         --m_nativeSwingSuppressCount;
         if (m_nativeSwingSuppressCount == 0) m_nativeSwingSuppressTicks = 0;
         return;
     }
-    m_pendingNativeSwings.push_back(PendingNativeSwing{static_cast<std::uint8_t>(ambiguous ? 2 : 1)});
+    m_pendingNativeSwings.push_back(PendingNativeSwing{source, static_cast<std::uint8_t>(ambiguous ? 2 : 1)});
 }
 
 void KeystrokesModule::queueNativeExplicitLeft() {
@@ -230,19 +240,22 @@ void KeystrokesModule::queueNativeExplicitLeft() {
     if (shouldQueue) queueNativeClick(true);
 }
 
-void KeystrokesModule::queueNativeRight() {
+void KeystrokesModule::queueNativeRight(std::uint16_t swingSourceMask) {
     if (!m_mouseActive.load(std::memory_order_acquire) || !m_showMouseCps.load(std::memory_order_relaxed)) return;
     bool shouldQueue = false;
     {
         std::lock_guard<std::mutex> lock(m_mouseMutex);
-        if (m_nativeRightThisTick) return;
-        if (!m_pendingNativeSwings.empty()) m_pendingNativeSwings.pop_back();
-        else {
-            m_nativeSwingSuppressCount = 1;
-            m_nativeSwingSuppressTicks = 2;
+        for (auto it = m_pendingNativeSwings.begin(); it != m_pendingNativeSwings.end();) {
+            const auto bit = swingSourceBit(it->source);
+            if (bit != 0 && (swingSourceMask & bit) != 0) it = m_pendingNativeSwings.erase(it);
+            else ++it;
         }
-        m_nativeRightThisTick = true;
-        shouldQueue = true;
+        m_nativeRmbSwingSuppressMask = static_cast<std::uint16_t>(m_nativeRmbSwingSuppressMask | swingSourceMask);
+        if (m_nativeRmbSwingSuppressTicks < 2) m_nativeRmbSwingSuppressTicks = 2;
+        if (!m_nativeRightThisTick) {
+            m_nativeRightThisTick = true;
+            shouldQueue = true;
+        }
     }
     if (shouldQueue) queueNativeClick(false);
 }
@@ -263,6 +276,10 @@ void KeystrokesModule::resolveNativeInputTick() {
         if (m_nativeSwingSuppressTicks > 0) {
             --m_nativeSwingSuppressTicks;
             if (m_nativeSwingSuppressTicks == 0) m_nativeSwingSuppressCount = 0;
+        }
+        if (m_nativeRmbSwingSuppressTicks > 0) {
+            --m_nativeRmbSwingSuppressTicks;
+            if (m_nativeRmbSwingSuppressTicks == 0) m_nativeRmbSwingSuppressMask = 0;
         }
         m_nativeExplicitLeftThisTick = false;
         m_nativeRightThisTick = false;
@@ -301,6 +318,8 @@ void KeystrokesModule::clearMouseState() {
     m_pendingNativeSwings.clear();
     m_nativeSwingSuppressCount = 0;
     m_nativeSwingSuppressTicks = 0;
+    m_nativeRmbSwingSuppressMask = 0;
+    m_nativeRmbSwingSuppressTicks = 0;
     m_nativeExplicitLeftThisTick = false;
     m_nativeRightThisTick = false;
     m_destroyActive.store(false, std::memory_order_relaxed);

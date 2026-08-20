@@ -4,9 +4,11 @@
 #include "core/memory/Hooks.hpp"
 #include <bedrocktools/events/EventBus.hpp>
 #include <bedrocktools/memory/Signatures.hpp>
+#include <bedrocktools/sdk/offsets/UI.hpp>
 #include <EGL/egl.h>
 #include <array>
 #include <atomic>
+#include <cstddef>
 #include <cstdint>
 #include <mutex>
 #include <string>
@@ -99,6 +101,18 @@ bool interactionSucceeded(InteractionResultValue result) {
     return (result.value & 1u) != 0;
 }
 
+bool interactionSwings(InteractionResultValue result) {
+    return (result.value & 2u) != 0;
+}
+
+bool itemStackHasItem(const void* itemStack) {
+    if (!itemStack) return false;
+    const auto* bytes = reinterpret_cast<const std::byte*>(itemStack);
+    auto* counter = *reinterpret_cast<void* const*>(bytes + bedrocktools::sdk::offsets::ShulkerPreview::ItemStackBaseItem);
+    if (!counter) return false;
+    return *reinterpret_cast<void* const*>(counter) != nullptr;
+}
+
 AttackKind attackKindFor(void* gameMode) {
     if (!gameMode) return AttackKind::GameMode;
     const auto survivalAttack = bedrocktools::memory::resolve(SignatureId::SurvivalModeAttack);
@@ -187,14 +201,14 @@ bool survivalModeUseItemAsAttackDetour(void* gameMode, void* item, const void* d
 InteractionResultValue gameModeUseItemOnDetour(void* gameMode, void* item, const void* position, std::uint8_t face, const void* hit, const void* block, bool firstEvent) {
     GameModeActionScope scope{GameModeType::GameMode, gameMode};
     const auto result = gameModeUseItemOnOriginal ? gameModeUseItemOnOriginal(gameMode, item, position, face, hit, block, firstEvent) : InteractionResultValue{};
-    if (firstEvent && interactionSucceeded(result)) scope.publish(GameModeAction::UseItemOn);
+    if (firstEvent && (interactionSucceeded(result) || (interactionSwings(result) && itemStackHasItem(item)))) scope.publish(GameModeAction::UseItemOn);
     return result;
 }
 
 InteractionResultValue survivalModeUseItemOnDetour(void* gameMode, void* item, const void* position, std::uint8_t face, const void* hit, const void* block, bool firstEvent) {
     GameModeActionScope scope{GameModeType::SurvivalMode, gameMode};
     const auto result = survivalModeUseItemOnOriginal ? survivalModeUseItemOnOriginal(gameMode, item, position, face, hit, block, firstEvent) : InteractionResultValue{};
-    if (firstEvent && interactionSucceeded(result)) scope.publish(GameModeAction::UseItemOn);
+    if (firstEvent && (interactionSucceeded(result) || (interactionSwings(result) && itemStackHasItem(item)))) scope.publish(GameModeAction::UseItemOn);
     return result;
 }
 
