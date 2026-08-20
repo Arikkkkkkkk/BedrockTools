@@ -1,84 +1,10 @@
 #include "keystrokes.hpp"
 #include "modules/ModuleRegistry.hpp"
 #include <bedrocktools/events/EventBus.hpp>
-#include <bedrocktools/sdk/Types.hpp>
-#include <bedrocktools/sdk/Offsets.hpp>
-#include <entt/entt.hpp>
-#include <array>
+#include <bedrocktools/sdk/input/MoveInput.hpp>
 #include <cmath>
 #include <string>
 #include <string_view>
-
-using uint = uint32_t;
-using ushort = uint16_t;
-using uchar = unsigned char;
-
-enum class EntityId : uint32_t {};
-
-template <size_t N, typename T>
-struct bitset {
-    T value;
-    void set(size_t index, bool v) {
-        if (v) value |= (1ULL << index);
-        else value &= ~(1ULL << index);
-    }
-    bool test(size_t index) const {
-        return (value & (1ULL << index)) != 0;
-    }
-};
-
-struct EntityIdTraits {
-    using value_type = EntityId;
-    using entity_type = uint32_t;
-    using version_type = uint16_t;
-    static constexpr uint32_t entity_mask = 0x3FFFF;
-    static constexpr uint32_t version_mask = 0x3FFF;
-};
-
-template<>
-struct entt::entt_traits<EntityId> : entt::basic_entt_traits<EntityIdTraits> {
-    static constexpr std::size_t page_size = ENTT_SPARSE_PAGE;
-};
-
-struct MoveInputState {
-    bitset<27, uint> mFlagValues;
-    bedrocktools::sdk::Vec2 mAnalogMoveVector;
-    uchar mLookSlightDirField;
-    uchar mLookNormalDirField;
-    uchar mLookSmoothDirField;
-    uchar pad[1];
-};
-
-struct MoveInputComponent {
-    MoveInputState mInputState;
-    MoveInputState mRawInputState;
-    uchar mHoldAutoJumpInWaterTicks;
-    uchar pad[3];
-    bedrocktools::sdk::Vec2 mMove;
-    bedrocktools::sdk::Vec2 mLookDelta;
-    bedrocktools::sdk::Vec2 mInteractDir;
-    bedrocktools::sdk::Vec3 mDisplacement;
-    bedrocktools::sdk::Vec3 mDisplacementDelta;
-    bedrocktools::sdk::Vec3 mCameraOrientation;
-    bitset<11, ushort> mFlagValues;
-    std::array<bool, 2> mIsPaddling;
-};
-
-class EntityRegistry;
-
-class EntityContext {
-public:
-    inline entt::basic_registry<EntityId>& getRegistry() { return mEnTTRegistry; }
-
-    template <class T>
-    inline T* tryGetComponent() {
-        return getRegistry().try_get<T>(mEntity);
-    }
-
-    EntityRegistry& mRegistry;
-    entt::basic_registry<EntityId>& mEnTTRegistry;
-    EntityId const mEntity;
-};
 
 static void keystrokesHSVtoRGB(float h, float s, float v, float& out_r, float& out_g, float& out_b) {
     if (s == 0.0f) {
@@ -103,22 +29,22 @@ static void keystrokesHSVtoRGB(float h, float s, float v, float& out_r, float& o
 
 static KeystrokesModule* g_keystrokesMod = nullptr;
 
-static void s_normalTickCallback(void* _this) {
+static void s_normalTickCallback(void* player) {
     if (!g_keystrokesMod || !g_keystrokesMod->enabled) return;
 
-    EntityContext* ctx = reinterpret_cast<EntityContext*>(reinterpret_cast<char*>(_this) + bedrocktools::sdk::offsets::Actor::mEntityContext);
-    if (!ctx) return;
-
-    auto* moveInput = ctx->tryGetComponent<MoveInputComponent>();
+    auto* moveInput = bedrocktools::sdk::moveInputComponent(player);
     if (!moveInput) return;
 
-    auto& flags = moveInput->mRawInputState.mFlagValues;
-    g_keystrokesMod->bW = flags.test(13);
-    g_keystrokesMod->bA = flags.test(15);
-    g_keystrokesMod->bS = flags.test(14);
-    g_keystrokesMod->bD = flags.test(16);
-    g_keystrokesMod->bSpace = flags.test(7);
-    g_keystrokesMod->bSneak = flags.test(0);
+    const auto& raw = moveInput->mRawInputState;
+    const auto analog = raw.mAnalogMoveVector;
+    constexpr float analogThreshold = 0.05f;
+
+    g_keystrokesMod->bW = raw.test(MoveInputState::Flag::Up) || raw.test(MoveInputState::Flag::UpLeft) || raw.test(MoveInputState::Flag::UpRight) || analog.y > analogThreshold;
+    g_keystrokesMod->bA = raw.test(MoveInputState::Flag::Left) || raw.test(MoveInputState::Flag::UpLeft) || raw.test(MoveInputState::Flag::DownLeft) || analog.x > analogThreshold;
+    g_keystrokesMod->bS = raw.test(MoveInputState::Flag::Down) || raw.test(MoveInputState::Flag::DownLeft) || raw.test(MoveInputState::Flag::DownRight) || analog.y < -analogThreshold;
+    g_keystrokesMod->bD = raw.test(MoveInputState::Flag::Right) || raw.test(MoveInputState::Flag::UpRight) || raw.test(MoveInputState::Flag::DownRight) || analog.x < -analogThreshold;
+    g_keystrokesMod->bSpace = raw.test(MoveInputState::Flag::JumpDown);
+    g_keystrokesMod->bSneak = raw.test(MoveInputState::Flag::SneakDown);
 }
 
 KeystrokesModule::KeystrokesModule()

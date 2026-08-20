@@ -10,7 +10,8 @@ enum class EventType : std::uint32_t {
     ClientInstanceUpdate,
     Attack,
     MouseInput,
-    ScreenState
+    ScreenState,
+    LocalPlayerPreTick
 };
 
 enum class EventPriority : std::int32_t {

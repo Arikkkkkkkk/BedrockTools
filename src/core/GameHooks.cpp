@@ -56,8 +56,11 @@ std::string versionDetour(void* self) {
 }
 
 void tickDetour(void* actor) {
+    auto* player = reinterpret_cast<bedrocktools::sdk::Player*>(actor);
+    LocalPlayerPreTickEvent preEvent{player};
+    bus().publish(preEvent);
     if (tickOriginal) tickOriginal(actor);
-    LocalPlayerTickEvent event{reinterpret_cast<bedrocktools::sdk::Player*>(actor)};
+    LocalPlayerTickEvent event{player};
     bus().publish(event);
 }
 
