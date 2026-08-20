@@ -1,10 +1,13 @@
 #include "keystrokes.hpp"
 #include "modules/ModuleRegistry.hpp"
+#include "core/memory/Hooks.hpp"
+#include <bedrocktools/memory/Signatures.hpp>
 #include <bedrocktools/events/EventBus.hpp>
 #include <bedrocktools/sdk/input/MoveInput.hpp>
 #include <cmath>
 #include <string>
 #include <string_view>
+#include <cstdint>
 
 static void keystrokesHSVtoRGB(float h, float s, float v, float& out_r, float& out_g, float& out_b) {
     if (s == 0.0f) {
@@ -28,6 +31,21 @@ static void keystrokesHSVtoRGB(float h, float s, float v, float& out_r, float& o
 }
 
 static KeystrokesModule* g_keystrokesMod = nullptr;
+KeystrokesModule::PlayerSwingFn KeystrokesModule::s_playerSwingOriginal = nullptr;
+
+static std::int64_t keystrokesNowNs() {
+    return std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+}
+
+bool KeystrokesModule::playerSwingDetour(void* player, std::uint8_t source) {
+    const bool result = s_playerSwingOriginal ? s_playerSwingOriginal(player, source) : false;
+    if (g_keystrokesMod && g_keystrokesMod->enabled) {
+        constexpr std::uint8_t mineSource = 2;
+        const bool miningSwing = source == mineSource && g_keystrokesMod->m_destroyActive.load(std::memory_order_relaxed);
+        if (!miningSwing) g_keystrokesMod->queueNativeSwing(source);
+    }
+    return result;
+}
 
 static void s_normalTickCallback(void* player) {
     if (!g_keystrokesMod || !g_keystrokesMod->enabled) return;
@@ -57,7 +75,41 @@ KeystrokesModule::~KeystrokesModule() {
 }
 
 void KeystrokesModule::onInit() {
-    bedrocktools::events::bus().subscribe<bedrocktools::events::LocalPlayerTickEvent>([](auto& event) { s_normalTickCallback(event.player); });
+    bedrocktools::events::bus().subscribe<bedrocktools::events::LocalPlayerTickEvent>([this](auto& event) {
+        resolveNativeInputTick();
+        s_normalTickCallback(event.player);
+    });
+    bedrocktools::events::bus().subscribe<bedrocktools::events::GameModeActionEvent>([this](auto& event) {
+        switch (event.action) {
+            case bedrocktools::events::GameModeAction::StartDestroyBlock:
+                if (!m_destroyActive.exchange(true, std::memory_order_relaxed)) queueNativeExplicitLeft();
+                break;
+            case bedrocktools::events::GameModeAction::StopDestroyBlock:
+                m_destroyActive.store(false, std::memory_order_relaxed);
+                break;
+            case bedrocktools::events::GameModeAction::Attack:
+                queueNativeExplicitLeft();
+                break;
+            case bedrocktools::events::GameModeAction::Interact:
+            case bedrocktools::events::GameModeAction::UseItemOn:
+                queueNativeRight();
+                break;
+            case bedrocktools::events::GameModeAction::UseItem:
+                if (event.hasNativeResult && event.nativeResult) queueNativeRight();
+                break;
+            case bedrocktools::events::GameModeAction::StartBuildBlock:
+            case bedrocktools::events::GameModeAction::UseItemAsAttack:
+                break;
+        }
+    });
+
+    if (!m_playerSwingHooked) {
+        const auto address = bedrocktools::memory::resolve(bedrocktools::memory::SignatureId::LocalPlayerSwing);
+        if (address) {
+            const auto handle = bedrocktools::hooks::install(reinterpret_cast<void*>(address), reinterpret_cast<void*>(playerSwingDetour), reinterpret_cast<void**>(&s_playerSwingOriginal));
+            m_playerSwingHooked = handle != nullptr;
+        }
+    }
 }
 
 void KeystrokesModule::onEnable() {
@@ -77,8 +129,10 @@ bool KeystrokesModule::onMouseEvent(int button, bool isDown) {
         }
         if (!m_mouseActive.load(std::memory_order_acquire) || !m_showMouseCps.load(std::memory_order_relaxed)) return false;
         m_lmbDown.store(true, std::memory_order_relaxed);
+        const auto now = std::chrono::steady_clock::now();
+        m_lastMouseLmbNs.store(std::chrono::duration_cast<std::chrono::nanoseconds>(now.time_since_epoch()).count(), std::memory_order_relaxed);
         std::lock_guard<std::mutex> lock(m_mouseMutex);
-        m_leftClicks.push_back(std::chrono::steady_clock::now());
+        m_leftClicks.push_back(now);
     } else if (button == 2) {
         if (!isDown) {
             m_rmbDown.store(false, std::memory_order_relaxed);
@@ -86,10 +140,142 @@ bool KeystrokesModule::onMouseEvent(int button, bool isDown) {
         }
         if (!m_mouseActive.load(std::memory_order_acquire) || !m_showMouseCps.load(std::memory_order_relaxed)) return false;
         m_rmbDown.store(true, std::memory_order_relaxed);
+        const auto now = std::chrono::steady_clock::now();
+        m_lastMouseRmbNs.store(std::chrono::duration_cast<std::chrono::nanoseconds>(now.time_since_epoch()).count(), std::memory_order_relaxed);
         std::lock_guard<std::mutex> lock(m_mouseMutex);
-        m_rightClicks.push_back(std::chrono::steady_clock::now());
+        m_rightClicks.push_back(now);
     }
     return false;
+}
+
+void KeystrokesModule::commitNativeClickBatchLocked() {
+    if (!m_nativeBatchActive) return;
+
+    constexpr std::int64_t mouseCorrelationNs = 120000000;
+    constexpr std::int64_t pressDurationNs = 110000000;
+    const auto lmbMouseNs = m_lastMouseLmbNs.load(std::memory_order_relaxed);
+    const auto rmbMouseNs = m_lastMouseRmbNs.load(std::memory_order_relaxed);
+    const auto nearBatch = [&](std::int64_t value) {
+        if (value == 0) return false;
+        const auto delta = value > m_nativeBatchLastNs ? value - m_nativeBatchLastNs : m_nativeBatchLastNs - value;
+        return delta < mouseCorrelationNs;
+    };
+
+    if (!nearBatch(lmbMouseNs) && !nearBatch(rmbMouseNs)) {
+        const auto now = std::chrono::steady_clock::now();
+        const auto nowNs = std::chrono::duration_cast<std::chrono::nanoseconds>(now.time_since_epoch()).count();
+        if (m_nativeBatchRight) {
+            m_rightClicks.push_back(now);
+            m_nativeRmbUntilNs.store(nowNs + pressDurationNs, std::memory_order_relaxed);
+        } else if (m_nativeBatchLeft) {
+            m_leftClicks.push_back(now);
+            m_nativeLmbUntilNs.store(nowNs + pressDurationNs, std::memory_order_relaxed);
+        }
+    }
+
+    m_nativeBatchActive = false;
+    m_nativeBatchLeft = false;
+    m_nativeBatchRight = false;
+    m_nativeBatchLastNs = 0;
+}
+
+void KeystrokesModule::queueNativeClick(bool left) {
+    if (!m_mouseActive.load(std::memory_order_acquire) || !m_showMouseCps.load(std::memory_order_relaxed)) return;
+
+    constexpr std::int64_t batchGapNs = 45000000;
+    const auto nowNs = keystrokesNowNs();
+    std::lock_guard<std::mutex> lock(m_mouseMutex);
+
+    if (m_nativeBatchActive && nowNs - m_nativeBatchLastNs > batchGapNs) commitNativeClickBatchLocked();
+    if (!m_nativeBatchActive) m_nativeBatchActive = true;
+    if (left) m_nativeBatchLeft = true;
+    else m_nativeBatchRight = true;
+    m_nativeBatchLastNs = nowNs;
+}
+
+void KeystrokesModule::queueNativeSwing(std::uint8_t source) {
+    if (!m_mouseActive.load(std::memory_order_acquire) || !m_showMouseCps.load(std::memory_order_relaxed)) return;
+    std::lock_guard<std::mutex> lock(m_mouseMutex);
+    const bool ambiguous = source == 1 || source == 3 || source == 5;
+    if (m_nativeRightThisTick) {
+        if (ambiguous && m_nativeSwingSuppressCount > 0) {
+            --m_nativeSwingSuppressCount;
+            if (m_nativeSwingSuppressCount == 0) m_nativeSwingSuppressTicks = 0;
+        }
+        return;
+    }
+    if (m_nativeExplicitLeftThisTick) return;
+    if (ambiguous && m_nativeSwingSuppressCount > 0) {
+        --m_nativeSwingSuppressCount;
+        if (m_nativeSwingSuppressCount == 0) m_nativeSwingSuppressTicks = 0;
+        return;
+    }
+    m_pendingNativeSwings.push_back(PendingNativeSwing{static_cast<std::uint8_t>(ambiguous ? 2 : 1)});
+}
+
+void KeystrokesModule::queueNativeExplicitLeft() {
+    if (!m_mouseActive.load(std::memory_order_acquire) || !m_showMouseCps.load(std::memory_order_relaxed)) return;
+    bool shouldQueue = false;
+    {
+        std::lock_guard<std::mutex> lock(m_mouseMutex);
+        if (m_nativeExplicitLeftThisTick) return;
+        if (!m_pendingNativeSwings.empty()) m_pendingNativeSwings.pop_back();
+        else {
+            m_nativeSwingSuppressCount = 1;
+            m_nativeSwingSuppressTicks = 1;
+        }
+        m_nativeExplicitLeftThisTick = true;
+        shouldQueue = true;
+    }
+    if (shouldQueue) queueNativeClick(true);
+}
+
+void KeystrokesModule::queueNativeRight() {
+    if (!m_mouseActive.load(std::memory_order_acquire) || !m_showMouseCps.load(std::memory_order_relaxed)) return;
+    bool shouldQueue = false;
+    {
+        std::lock_guard<std::mutex> lock(m_mouseMutex);
+        if (m_nativeRightThisTick) return;
+        if (!m_pendingNativeSwings.empty()) m_pendingNativeSwings.pop_back();
+        else {
+            m_nativeSwingSuppressCount = 1;
+            m_nativeSwingSuppressTicks = 2;
+        }
+        m_nativeRightThisTick = true;
+        shouldQueue = true;
+    }
+    if (shouldQueue) queueNativeClick(false);
+}
+
+void KeystrokesModule::resolveNativeInputTick() {
+    std::uint32_t expiredSwings = 0;
+    {
+        std::lock_guard<std::mutex> lock(m_mouseMutex);
+        for (auto it = m_pendingNativeSwings.begin(); it != m_pendingNativeSwings.end();) {
+            if (it->ticksRemaining > 0) --it->ticksRemaining;
+            if (it->ticksRemaining == 0) {
+                ++expiredSwings;
+                it = m_pendingNativeSwings.erase(it);
+            } else {
+                ++it;
+            }
+        }
+        if (m_nativeSwingSuppressTicks > 0) {
+            --m_nativeSwingSuppressTicks;
+            if (m_nativeSwingSuppressTicks == 0) m_nativeSwingSuppressCount = 0;
+        }
+        m_nativeExplicitLeftThisTick = false;
+        m_nativeRightThisTick = false;
+    }
+    if (expiredSwings > 0) queueNativeClick(true);
+}
+
+void KeystrokesModule::flushNativeClickBatch(bool force) {
+    constexpr std::int64_t batchGapNs = 45000000;
+    const auto nowNs = keystrokesNowNs();
+    std::lock_guard<std::mutex> lock(m_mouseMutex);
+    if (!m_nativeBatchActive) return;
+    if (force || nowNs - m_nativeBatchLastNs >= batchGapNs) commitNativeClickBatchLocked();
 }
 
 std::pair<int, int> KeystrokesModule::getMouseCps() {
@@ -103,13 +289,29 @@ std::pair<int, int> KeystrokesModule::getMouseCps() {
 void KeystrokesModule::clearMouseState() {
     m_lmbDown.store(false, std::memory_order_relaxed);
     m_rmbDown.store(false, std::memory_order_relaxed);
+    m_nativeLmbUntilNs.store(0, std::memory_order_relaxed);
+    m_nativeRmbUntilNs.store(0, std::memory_order_relaxed);
+    m_lastMouseLmbNs.store(0, std::memory_order_relaxed);
+    m_lastMouseRmbNs.store(0, std::memory_order_relaxed);
     std::lock_guard<std::mutex> lock(m_mouseMutex);
+    m_nativeBatchActive = false;
+    m_nativeBatchLeft = false;
+    m_nativeBatchRight = false;
+    m_nativeBatchLastNs = 0;
+    m_pendingNativeSwings.clear();
+    m_nativeSwingSuppressCount = 0;
+    m_nativeSwingSuppressTicks = 0;
+    m_nativeExplicitLeftThisTick = false;
+    m_nativeRightThisTick = false;
+    m_destroyActive.store(false, std::memory_order_relaxed);
     m_leftClicks.clear();
     m_rightClicks.clear();
 }
 
 void KeystrokesModule::onFrame() {
     if (!enabled) return;
+
+    flushNativeClickBatch(false);
 
     m_rainbowHue += 0.002f * m_rainbowSpeed;
     if (m_rainbowHue > 1.0f) m_rainbowHue -= 1.0f;
@@ -131,8 +333,11 @@ void KeystrokesModule::onFrame() {
     updateAnim(m_dState, bD);
     updateAnim(m_jumpState, bSpace);
     updateAnim(m_sneakState, bSneak);
-    updateAnim(m_lmbState, showMouseCps && m_lmbDown.load(std::memory_order_relaxed));
-    updateAnim(m_rmbState, showMouseCps && m_rmbDown.load(std::memory_order_relaxed));
+    const auto nowNs = keystrokesNowNs();
+    const bool lmbPressed = m_lmbDown.load(std::memory_order_relaxed) || nowNs < m_nativeLmbUntilNs.load(std::memory_order_relaxed);
+    const bool rmbPressed = m_rmbDown.load(std::memory_order_relaxed) || nowNs < m_nativeRmbUntilNs.load(std::memory_order_relaxed);
+    updateAnim(m_lmbState, showMouseCps && lmbPressed);
+    updateAnim(m_rmbState, showMouseCps && rmbPressed);
 
     std::vector<PLModMenu_DrawCommand> cmds;
 
