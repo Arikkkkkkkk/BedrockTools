@@ -23,6 +23,8 @@
 #include "hud/speeddisplay.hpp"
 #include "hud/debugmenu.hpp"
 #include "visual/viewmodel.hpp"
+#include "visual/betterhandhelds.hpp"
+#include "visual/freecam.hpp"
 #include "hud/keystrokes.hpp"
 #include "visual/thirdpersonnametag.hpp"
 #include "hud/tablist.hpp"
@@ -103,6 +105,8 @@ void registerAllModules() {
     registry.emplace<SpeedDisplayModule>();
     registry.emplace<DebugMenuModule>();
     registry.emplace<ViewModelModule>();
+    registry.emplace<BetterHandheldsModule>();
+    registry.emplace<FreecamModule>();
     registry.emplace<SwingModifierModule>();
     registry.emplace<KeystrokesModule>();
     registry.emplace<ThirdPersonNametagModule>();
