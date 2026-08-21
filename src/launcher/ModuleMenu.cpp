@@ -173,10 +173,17 @@ void registerModulesWithLauncher() {
                     maxVal = 4.0f;
                 } else if (kLower.find("width") != std::string::npos) {
                     maxVal = 1000.0f;
-                } else if (kLower.find("position") != std::string::npos ||
-                           kLower.find("posx") != std::string::npos ||
-                           kLower.find("posy") != std::string::npos) {
+                } else if (kLower.find("position") != std::string::npos) {
+                    // Screen-pixel UI position (e.g. Shulker Preview's floating panel) —
+                    // legitimately needs a large range.
                     maxVal = 2000.0f;
+                } else if (kLower.find("posx") != std::string::npos ||
+                           kLower.find("posy") != std::string::npos ||
+                           kLower.find("posz") != std::string::npos) {
+                    // Small 3D offset (View Model / Better Handhelds hand placement) —
+                    // needs a tight, symmetric range, not screen-pixel scale.
+                    minVal = -2.0f;
+                    maxVal = 2.0f;
                 } else if (kLower.find("range") != std::string::npos) {
                     maxVal = 180.0f;
                 } else if (kLower.find("fov") != std::string::npos) {
