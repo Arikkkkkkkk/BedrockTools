@@ -21,9 +21,7 @@ static void _renderItem_hook(void* _this, void* renderContext, void* entity,
         bool skip = g_betterHandheldsMod->isThirdPerson() && !g_betterHandheldsMod->applyThirdPerson;
 
         if (!skip) {
-            const float scale = renderingMainHand
-                ? g_betterHandheldsMod->mainHandScale
-                : g_betterHandheldsMod->offHandScale;
+            const float scale = g_betterHandheldsMod->mainHandScale;
             const float px = renderingMainHand
                 ? g_betterHandheldsMod->mainHandPosX
                 : g_betterHandheldsMod->offHandPosX;
